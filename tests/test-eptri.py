@@ -109,7 +109,8 @@ def test_control_transfer_in_lazy(dut):
     if len(setup_data) != 10:
         raise TestFailure(
             "2. expected setup data to be 10 bytes, but was {} bytes: {}".
-            format(len(setup_data), data))
+            format(len(setup_data), data, len(setup_data),
+                   len(setup_data) != 10))
     # Note: the `out` buffer hasn't been drained yet
 
     yield harness.set_response(epaddr_in, EndpointResponse.ACK)
@@ -378,7 +379,7 @@ def test_control_transfer_in_nak_data(dut):
     yield harness.reset()
     yield harness.connect()
 
-    addr = 22
+    addr = 0
     yield harness.write(harness.csrs['usb_address'], addr)
     # Get descriptor, Index 0, Type 03, LangId 0000, wLength 64
     setup_data = [0x80, 0x06, 0x00, 0x03, 0x00, 0x00, 0x40, 0x00]
@@ -497,6 +498,11 @@ def test_control_transfer_in(dut):
                           "was: {:02x}".format(out_ev))
     yield harness.transaction_status_out(ADDR, epaddr_out)
     yield RisingEdge(harness.dut.clk12)
+
+    # give two cycles to percolate through multiregs and event manager
+    yield RisingEdge(harness.dut.clk12)
+    yield RisingEdge(harness.dut.clk12)
+    
     out_ev = yield harness.read(harness.csrs['usb_out_ev_pending'])
     if out_ev != 1:
         raise TestFailure("i: out_ev should be 1 at the end of the test, "
@@ -567,10 +573,10 @@ def test_control_transfer_in_out(dut):
 
     yield harness.clear_pending(EndpointType.epaddr(0, EndpointType.OUT))
     yield harness.clear_pending(EndpointType.epaddr(0, EndpointType.IN))
-    yield harness.write(harness.csrs['usb_address'], 20)
+    yield harness.write(harness.csrs['usb_address'], 0)
 
     yield harness.control_transfer_in(
-        20,
+        0,
         # Get device descriptor
         [0x80, 0x06, 0x00, 0x01, 0x00, 0x00, 0x40, 00],
         # 18 byte descriptor, max packet size 8 bytes
@@ -581,7 +587,7 @@ def test_control_transfer_in_out(dut):
     )
 
     yield harness.control_transfer_out(
-        20,
+        0,
         # Set address (to 11)
         [0x00, 0x05, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00],
         # 18 byte descriptor, max packet size 8 bytes
@@ -724,8 +730,7 @@ def test_in_transfer(dut):
 
     yield harness.set_data(epaddr, d[:4])
     yield harness.set_response(epaddr, EndpointResponse.ACK)
-    yield harness.host_send_token_packet(PID.IN, addr,
-                                         EndpointType.epnum(epaddr))
+    yield harness.host_send_token_packet(PID.IN, addr, EndpointType.epnum(epaddr))
     yield harness.host_expect_data_packet(PID.DATA0, d[:4])
     yield harness.host_send_ack()
 
@@ -735,8 +740,7 @@ def test_in_transfer(dut):
     yield harness.set_data(epaddr, d[4:])
     yield harness.set_response(epaddr, EndpointResponse.ACK)
 
-    yield harness.host_send_token_packet(PID.IN, addr,
-                                         EndpointType.epnum(epaddr))
+    yield harness.host_send_token_packet(PID.IN, addr, EndpointType.epnum(epaddr))
     yield harness.host_expect_data_packet(PID.DATA1, d[4:])
     yield harness.host_send_ack()
 
@@ -768,7 +772,7 @@ def test_debug_in(dut):
     yield harness.reset()
     yield harness.connect()
 
-    addr = 28
+    addr = 0
     yield harness.write(harness.csrs['usb_address'], addr)
     # The "scratch" register defaults to 0x12345678 at boot.
     reg_addr = harness.csrs['ctrl_scratch']
