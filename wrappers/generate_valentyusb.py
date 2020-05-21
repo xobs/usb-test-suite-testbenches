@@ -73,7 +73,7 @@ class _CRG(Module):
         self.comb += clk12.eq(clk12_counter[1])
 
         clk100 = clk.clk100
-        if False: # set to true to run with 100 MHz sim
+        if True: # set to true to run with 100 MHz sim
            self.comb += self.cd_sys.clk.eq(clk100)
         else:
            self.comb += self.cd_sys.clk.eq(clk12)
