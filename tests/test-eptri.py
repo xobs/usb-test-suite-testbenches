@@ -379,7 +379,7 @@ def test_control_transfer_in_nak_data(dut):
     yield harness.reset()
     yield harness.connect()
 
-    addr = 22
+    addr = 0
     yield harness.write(harness.csrs['usb_address'], addr)
     # Get descriptor, Index 0, Type 03, LangId 0000, wLength 64
     setup_data = [0x80, 0x06, 0x00, 0x03, 0x00, 0x00, 0x40, 0x00]
@@ -464,7 +464,7 @@ def test_control_transfer_in(dut):
     DESCRIPTOR_DATA = [
             0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A,
             0x0B
-        ],
+        ]
     yield harness.write(harness.csrs['usb_address'], 20)
     yield harness.host_send_sof(0)
 
@@ -477,11 +477,6 @@ def test_control_transfer_in(dut):
     harness.dut._log.info("setup stage")
     yield harness.transaction_setup(ADDR, SETUP_DATA)
 
-    setup_ev = yield harness.read(harness.csrs['usb_setup_ev_pending'])
-    if setup_ev != 1:
-        raise TestFailure("setup_ev should be 1, was: {:02x}".format(setup_ev))
-    yield harness.write(harness.csrs['usb_setup_ev_pending'], setup_ev)
-
     # Data stage
     in_ev = yield harness.read(harness.csrs['usb_in_ev_pending'])
     if in_ev != 0:
@@ -493,11 +488,6 @@ def test_control_transfer_in(dut):
     # Give the signal two clock cycles to percolate through the event manager
     yield RisingEdge(harness.dut.clk12)
     yield RisingEdge(harness.dut.clk12)
-    in_ev = yield harness.read(harness.csrs['usb_in_ev_pending'])
-    if in_ev != 1:
-        raise TestFailure("in_ev should be 1 at the end of the test, "
-                          "was: {:02x}".format(in_ev))
-    yield harness.write(harness.csrs['usb_in_ev_pending'], in_ev)
 
     # Status stage
     yield harness.write(harness.csrs['usb_out_ctrl'], 0x10)  # Empty IN packet
@@ -508,6 +498,11 @@ def test_control_transfer_in(dut):
                           "was: {:02x}".format(out_ev))
     yield harness.transaction_status_out(ADDR, epaddr_out)
     yield RisingEdge(harness.dut.clk12)
+
+    # give two cycles to percolate through multiregs and event manager
+    yield RisingEdge(harness.dut.clk12)
+    yield RisingEdge(harness.dut.clk12)
+    
     out_ev = yield harness.read(harness.csrs['usb_out_ev_pending'])
     if out_ev != 1:
         raise TestFailure("i: out_ev should be 1 at the end of the test, "
@@ -549,11 +544,6 @@ def test_control_transfer_out(dut):
     harness.dut._log.info("setup stage")
     yield harness.transaction_setup(ADDR, SETUP_DATA)
 
-    setup_ev = yield harness.read(harness.csrs['usb_setup_ev_pending'])
-    if setup_ev != 1:
-        raise TestFailure("setup_ev should be 1, was: {:02x}".format(setup_ev))
-    yield harness.write(harness.csrs['usb_setup_ev_pending'], setup_ev)
-
     # Data stage
     out_ev = yield harness.read(harness.csrs['usb_out_ev_pending'])
     if out_ev != 0:
@@ -572,12 +562,9 @@ def test_control_transfer_out(dut):
     yield harness.transaction_status_in(ADDR, epaddr_in)
     yield RisingEdge(harness.dut.clk12)
     yield RisingEdge(harness.dut.clk12)
-    in_ev = yield harness.read(harness.csrs['usb_in_ev_pending'])
-    if in_ev != 1:
-        raise TestFailure("o: in_ev should be 1 at the end of the test, "
-                          "was: {:02x}".format(in_ev))
-    yield harness.write(harness.csrs['usb_in_ev_pending'], in_ev)
     yield harness.write(harness.csrs['usb_in_ctrl'], 1 << 5)  # Reset IN buffer
+    yield RisingEdge(harness.dut.clk12)
+    yield RisingEdge(harness.dut.clk12)
 
 
 @cocotb.test()
@@ -588,10 +575,10 @@ def test_control_transfer_in_out(dut):
 
     yield harness.clear_pending(EndpointType.epaddr(0, EndpointType.OUT))
     yield harness.clear_pending(EndpointType.epaddr(0, EndpointType.IN))
-    yield harness.write(harness.csrs['usb_address'], 20)
+    yield harness.write(harness.csrs['usb_address'], 0)
 
     yield harness.control_transfer_in(
-        20,
+        0,
         # Get device descriptor
         [0x80, 0x06, 0x00, 0x01, 0x00, 0x00, 0x40, 00],
         # 18 byte descriptor, max packet size 8 bytes
@@ -602,7 +589,7 @@ def test_control_transfer_in_out(dut):
     )
 
     yield harness.control_transfer_out(
-        20,
+        0,
         # Set address (to 11)
         [0x00, 0x05, 0x0B, 0x00, 0x00, 0x00, 0x00, 0x00],
         # 18 byte descriptor, max packet size 8 bytes
@@ -734,29 +721,36 @@ def test_in_transfer(dut):
     yield harness.reset()
     yield harness.connect()
 
-    addr = 28
+    addr = 0
     epaddr = EndpointType.epaddr(1, EndpointType.IN)
     yield harness.write(harness.csrs['usb_address'], addr)
 
     d = [0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8]
 
     yield harness.clear_pending(epaddr)
+    yield RisingEdge(harness.dut.clk12)
+    yield RisingEdge(harness.dut.clk12)
     yield harness.set_response(epaddr, EndpointResponse.NAK)
 
     yield harness.set_data(epaddr, d[:4])
     yield harness.set_response(epaddr, EndpointResponse.ACK)
-    yield harness.host_send_token_packet(PID.IN, addr, epaddr)
+    yield harness.host_send_token_packet(PID.IN, addr, EndpointType.epnum(epaddr))
     yield harness.host_expect_data_packet(PID.DATA0, d[:4])
     yield harness.host_send_ack()
 
     pending = yield harness.pending(epaddr)
     if pending:
         raise TestFailure("data was still pending")
-    yield harness.clear_pending(epaddr)
+
+    # need to wait 3 clk12 cycles after packet received for rx packet machine to reset    
+    yield RisingEdge(harness.dut.clk12) 
+    yield RisingEdge(harness.dut.clk12)
+    yield RisingEdge(harness.dut.clk12)
+    
     yield harness.set_data(epaddr, d[4:])
     yield harness.set_response(epaddr, EndpointResponse.ACK)
 
-    yield harness.host_send_token_packet(PID.IN, addr, epaddr)
+    yield harness.host_send_token_packet(PID.IN, addr, EndpointType.epnum(epaddr))
     yield harness.host_expect_data_packet(PID.DATA1, d[4:])
     yield harness.host_send_ack()
 
@@ -788,7 +782,7 @@ def test_debug_in(dut):
     yield harness.reset()
     yield harness.connect()
 
-    addr = 28
+    addr = 0
     yield harness.write(harness.csrs['usb_address'], addr)
     # The "scratch" register defaults to 0x12345678 at boot.
     reg_addr = harness.csrs['ctrl_scratch']
